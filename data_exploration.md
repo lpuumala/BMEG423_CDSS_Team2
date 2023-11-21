@@ -115,8 +115,22 @@ no_sepsis <- cinc_data %>%
 
 #### Start analyzing data
 
-\[note to self - add in means for 6 and 4 hours before positive sepsis
-diagnosis\]
+In the summary table called “means”, I have computed the mean value of
+each vital sign/lab value in the dataset for the following patient
+groups: - All data for sepsis patients, including data before **and**
+after positive sepsis diagnosis  
+- Data for sepsis patients after their positive sepsis diagnosis (only
+including rows of data where SepsisLabel = 1)  
+- Data for sepsis patients before their positive sepsis diagnosis (only
+including rows of data where SepsisLabel = 0)  
+- All data for patients who never developed sepsis (patients for which
+SepsisLabel = 0 throuhgout their ICU stay)
+
+These mean values were calculated without cleaning or modifying any
+values in the dataset. NA values were removed from the computations.
+
+**Note:** I have not yet dealt with missing values (filling in or
+interpolating) - this could affect the means.
 
 ``` r
 # Means computed for all sepsis-positive patient data (including data before and after positive sepsis diagnosis)
@@ -241,3 +255,608 @@ print(means)
     ## 2 29.98421  9.988837 14.46139 62.09832
     ## 3 29.80897  9.992177 13.15087 62.27995
     ## 4 30.21742 10.152754 11.52303 62.69188
+
+#### Plotting data as boxplots
+
+``` r
+#Create copy of cinc_data with some added labels to help group the data based on sepsis state
+cinc_data_1 <- cinc_data %>%
+  mutate(LabelA = case_when(
+    patient %in% no_sepsis_patientIDs[[1]] ~ "no_sepsis",
+    patient %in% sepsis_patientIDs[[1]] ~ "sepsis"
+  )) %>%
+  mutate(LabelB = case_when(
+    patient %in% no_sepsis_patientIDs[[1]] ~ "no_sepsis",
+    SepsisLabel == 0 ~ "pre-sepsis",
+    TRUE ~ "during_sepsis"
+  ))
+
+#Create table with min and max cutoffs
+#Based on values reported by Firoozabadi & Babaeizadeh, 2019 (cinc.org/archives/2019/pdf/CinC2019-023.pdf)
+minmax <- tribble(
+  ~variable, ~min, ~max,
+  "HR", 10, 300,
+  "O2Sat", 60, 100,
+  "Temp", 32, 42.2,
+  "SBP", 40, 280,
+  "MAP", 0, 300,
+  "DBP", 20, 130,
+  "Resp", 5, 60,
+  "FiO2", 0, 1,
+  "pH", 6, 8,
+  "BUN", 0, 500,
+  "Creatinine", 0, 10,
+  "Glucose", 0, 1000,
+  "Magnesium", 0, 10,
+  "Potassium", 1, 10,
+  "Hct", 10, 70,
+  "Hgb", 2, 22,
+  "WBC", 0, 50,
+  "Age", 0, 150
+)
+
+#Replace outliers with NA using the min and max valuesin minmax
+cinc_data_2 <- cinc_data_1
+for (i in 1:18) {
+  cinc_data_2[minmax[[1]][i]][cinc_data_2[minmax[[1]][i]] < minmax[[2]][i] | 
+                                cinc_data_2[minmax[[1]][i]] >   minmax[[3]][i]] <- NA
+}
+```
+
+``` r
+# HR
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = HR)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = HR)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-7-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = HR)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-7-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = HR)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-7-4.png)<!-- -->
+
+``` r
+# O2Sat
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = O2Sat)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = O2Sat)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-8-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = O2Sat)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-8-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = O2Sat)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-8-4.png)<!-- -->
+
+``` r
+# Temp
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = Temp)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = Temp)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-9-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = Temp)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-9-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = Temp)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-9-4.png)<!-- -->
+
+``` r
+# SBP
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = SBP)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = SBP)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-10-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = SBP)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-10-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = SBP)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-10-4.png)<!-- -->
+
+``` r
+# MAP
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = MAP)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = MAP)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-11-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = MAP)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-11-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = MAP)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-11-4.png)<!-- -->
+
+``` r
+# DBP
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = DBP)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = DBP)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-12-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = DBP)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-12-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = DBP)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-12-4.png)<!-- -->
+
+``` r
+# Resp
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = Resp)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = Resp)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-13-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = Resp)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-13-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = Resp)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-13-4.png)<!-- -->
+
+``` r
+# FiO2
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = FiO2)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = FiO2)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-14-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = FiO2)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-14-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = FiO2)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-14-4.png)<!-- -->
+
+``` r
+# pH
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = pH)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = pH)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-15-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = pH)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-15-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = pH)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-15-4.png)<!-- -->
+
+``` r
+# BUN
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = BUN)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-16-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = BUN)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-16-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = BUN)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-16-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = BUN)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-16-4.png)<!-- -->
+
+``` r
+# Creatinine
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = Creatinine)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = Creatinine)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-17-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = Creatinine)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-17-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = Creatinine)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-17-4.png)<!-- -->
+
+``` r
+# Glucose
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = Glucose)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-18-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = Glucose)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-18-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = Glucose)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-18-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = Glucose)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-18-4.png)<!-- -->
+
+``` r
+# Magnesium
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = Magnesium)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-19-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = Magnesium)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-19-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = Magnesium)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-19-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = Magnesium)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-19-4.png)<!-- -->
+
+``` r
+# Potassium
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = Potassium)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-20-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = Potassium)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-20-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = Potassium)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-20-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = Potassium)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-20-4.png)<!-- -->
+
+``` r
+# Hct
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = Hct)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-21-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = Hct)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-21-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = Hct)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-21-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = Hct)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-21-4.png)<!-- -->
+
+``` r
+# Hgb
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = Hgb)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-22-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = Hgb)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-22-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = Hgb)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-22-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = Hgb)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-22-4.png)<!-- -->
+
+``` r
+# WBC
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = WBC)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-23-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = WBC)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-23-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = WBC)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-23-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = WBC)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-23-4.png)<!-- -->
+
+``` r
+# Age
+#raw data
+cinc_data_1 %>% ggplot(aes(x = LabelA, y = Age)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-24-1.png)<!-- -->
+
+``` r
+cinc_data_1 %>% ggplot(aes(x = LabelB, y = Age)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-24-2.png)<!-- -->
+
+``` r
+#outliers removed
+cinc_data_2 %>% ggplot(aes(x = LabelA, y = Age)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-24-3.png)<!-- -->
+
+``` r
+cinc_data_2 %>% ggplot(aes(x = LabelB, y = Age)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+![](data_exploration_files/figure-gfm/unnamed-chunk-24-4.png)<!-- -->
