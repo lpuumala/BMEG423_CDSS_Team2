@@ -97,4 +97,109 @@ no_sepsis <- cinc_data %>%
   filter(patient %in% no_sepsis_patientIDs[[1]])
 ```
 
+#### Start analyzing data
+[note to self - add in means for 6 and 4 hours before positive sepsis diagnosis]
+```{r}
+# Means computed for all sepsis-positive patient data (including data before and after positive sepsis diagnosis)
+# NA values have been removed
+sepsis_means <- sepsis %>%
+  summarise(mean_HR = mean(HR, na.rm = TRUE),
+            mean_O2sat = mean(O2Sat, na.rm = TRUE),
+            mean_Temp = mean(Temp, na.rm = TRUE),
+            mean_SBP = mean(SBP, na.rm = TRUE),
+            mean_MAP = mean(MAP, na.rm = TRUE),
+            mean_DBP = mean(DBP, na.rm = TRUE),
+            mean_Resp = mean(Resp, na.rm = TRUE),
+            mean_FiO2 = mean(FiO2, na.rm = TRUE),
+            mean_pH = mean(pH, na.rm = TRUE),
+            mean_BUN = mean(BUN, na.rm = TRUE),
+            mean_Creatinine = mean(Creatinine, na.rm = TRUE),
+            mean_Glucose = mean(Glucose, na.rm = TRUE),
+            mean_Magnesium = mean(Magnesium, na.rm = TRUE),
+            mean_Potassium = mean(Potassium, na.rm = TRUE),
+            mean_Hct = mean(Hct, na.rm = TRUE),
+            mean_Hgb = mean(Hgb, na.rm = TRUE),
+            mean_WBC = mean(WBC, na.rm = TRUE),
+            mean_Age = mean(Age, na.rm = TRUE)) %>%
+  mutate(Demographic = "All data for sepsis-positive patients before and after positive SepsisLabel") %>%
+  select(Demographic, everything())
+
+# Means computed for sepsis-positive patient data (only including data during which SepsisLabel = 1)
+# NA values have been removed
+sepsis_means_after <- sepsis %>%
+    filter(SepsisLabel == 1) %>%
+    summarise(mean_HR = mean(HR, na.rm = TRUE),
+            mean_O2sat = mean(O2Sat, na.rm = TRUE),
+            mean_Temp = mean(Temp, na.rm = TRUE),
+            mean_SBP = mean(SBP, na.rm = TRUE),
+            mean_MAP = mean(MAP, na.rm = TRUE),
+            mean_DBP = mean(DBP, na.rm = TRUE),
+            mean_Resp = mean(Resp, na.rm = TRUE),
+            mean_FiO2 = mean(FiO2, na.rm = TRUE),
+            mean_pH = mean(pH, na.rm = TRUE),
+            mean_BUN = mean(BUN, na.rm = TRUE),
+            mean_Creatinine = mean(Creatinine, na.rm = TRUE),
+            mean_Glucose = mean(Glucose, na.rm = TRUE),
+            mean_Magnesium = mean(Magnesium, na.rm = TRUE),
+            mean_Potassium = mean(Potassium, na.rm = TRUE),
+            mean_Hct = mean(Hct, na.rm = TRUE),
+            mean_Hgb = mean(Hgb, na.rm = TRUE),
+            mean_WBC = mean(WBC, na.rm = TRUE),
+            mean_Age = mean(Age, na.rm = TRUE)) %>%
+  mutate(Demographic = "Data for sepsis-positive patients after positive SepsisLabel") %>%
+  select(Demographic, everything())
+
+# Means computed for sepsis-positive patient data (including only data before positive sepsis diagnosis)
+# NA values have been removed
+sepsis_means_before <- sepsis %>%
+  filter(SepsisLabel == 0) %>%
+  summarise(mean_HR = mean(HR, na.rm = TRUE),
+            mean_O2sat = mean(O2Sat, na.rm = TRUE),
+            mean_Temp = mean(Temp, na.rm = TRUE),
+            mean_SBP = mean(SBP, na.rm = TRUE),
+            mean_MAP = mean(MAP, na.rm = TRUE),
+            mean_DBP = mean(DBP, na.rm = TRUE),
+            mean_Resp = mean(Resp, na.rm = TRUE),
+            mean_FiO2 = mean(FiO2, na.rm = TRUE),
+            mean_pH = mean(pH, na.rm = TRUE),
+            mean_BUN = mean(BUN, na.rm = TRUE),
+            mean_Creatinine = mean(Creatinine, na.rm = TRUE),
+            mean_Glucose = mean(Glucose, na.rm = TRUE),
+            mean_Magnesium = mean(Magnesium, na.rm = TRUE),
+            mean_Potassium = mean(Potassium, na.rm = TRUE),
+            mean_Hct = mean(Hct, na.rm = TRUE),
+            mean_Hgb = mean(Hgb, na.rm = TRUE),
+            mean_WBC = mean(WBC, na.rm = TRUE),
+            mean_Age = mean(Age, na.rm = TRUE)) %>%
+  mutate(Demographic = "Data for sepsis-positive patients before positive SepsisLabel") %>%
+  select(Demographic, everything())
+
+# Means computed for all sepsis-negative patient data (only including patients who never developed sepsis)
+# NA values have been removed
+no_sepsis_means <- no_sepsis %>%
+  summarise(mean_HR = mean(HR, na.rm = TRUE),
+            mean_O2sat = mean(O2Sat, na.rm = TRUE),
+            mean_Temp = mean(Temp, na.rm = TRUE),
+            mean_SBP = mean(SBP, na.rm = TRUE),
+            mean_MAP = mean(MAP, na.rm = TRUE),
+            mean_DBP = mean(DBP, na.rm = TRUE),
+            mean_Resp = mean(Resp, na.rm = TRUE),
+            mean_FiO2 = mean(FiO2, na.rm = TRUE),
+            mean_pH = mean(pH, na.rm = TRUE),
+            mean_BUN = mean(BUN, na.rm = TRUE),
+            mean_Creatinine = mean(Creatinine, na.rm = TRUE),
+            mean_Glucose = mean(Glucose, na.rm = TRUE),
+            mean_Magnesium = mean(Magnesium, na.rm = TRUE),
+            mean_Potassium = mean(Potassium, na.rm = TRUE),
+            mean_Hct = mean(Hct, na.rm = TRUE),
+            mean_Hgb = mean(Hgb, na.rm = TRUE),
+            mean_WBC = mean(WBC, na.rm = TRUE),
+            mean_Age = mean(Age, na.rm = TRUE)) %>%
+  mutate(Demographic = "All data for sepsis-negative patients") %>%
+  select(Demographic, everything())
+
+means <- rbind(sepsis_means, sepsis_means_after, sepsis_means_before, no_sepsis_means)
+print(means)
+```
+
 
