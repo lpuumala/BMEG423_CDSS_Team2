@@ -227,6 +227,23 @@ grid.rect(width = 1, height = 1, gp = gpar(lwd = 2, col = "black", fill = NA))
 
 ### Significance Testing
 
+In this section, I performed t-tests and ANOVA tests to check the
+significance of variation in different variables in the patient data due
+to sepsis. T-tests were performed to compare the no sepsis vs. sepsis
+groups (e.g., all data for patients who never developed sepsis vs. all
+data for patients who eventually developed sepsis). ANOVA tests were
+used to compare the no sepsis vs. pre-sepsis and during sepsis groups.
+Significance was evaluated based on p-values. Levine tests were done
+prior to t-tests and ANOVA tests to evaluate if variances were equal or
+not to inform the way in which R’s t-test and ANOVA functions were
+applied to the dataset. Results are tabulated below for the raw data and
+data with outliers removed. In general, more significant variables
+should have smaller p-values.
+
+**Note:** this type of significance testing is not typically the best
+for large datasets like this, as p-values depend on the sample size. See
+the section below on effect size testing for more valuable information.
+
 **Using raw data before removing outliers**  
 Results are saved in the statistics variable
 
