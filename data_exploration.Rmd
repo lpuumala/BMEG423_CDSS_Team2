@@ -17,19 +17,22 @@ Team 2
 The training and test data used in this project are from the 2019 PhysioNet Computing in Cardiology Challenge. More information about the challenge can be found [here](https://physionet.org/content/challenge-2019/1.0.0/).
  
 This document includes the following:  
-1. R code to merge all training cases into a single dataframe (which can be easily exported to a csv)  
-2. Plots illustrating the characteristics of the dataset  
-   b. Comparing patients who never had sepsis to those who didn't have sepsis initially, but developed it, and those who had sepsis from the beginning of the dataset  
-   c. Characteristics of patient data 4-6 hours prior to sepsis diagnosis  
+  1. R code to merge all training cases into a single dataframe (which can be easily exported to a csv)  
+  2. Plots illustrating the characteristics of the dataset  
+      b. Comparing patients who never had sepsis to those who didn't have sepsis initially, but developed it, and those who had sepsis from the beginning of the dataset  
+      c. Characteristics of patient data 4-6 hours prior to sepsis diagnosis  
   
-```{r}
+```{r, message = FALSE}
 #LOAD REQUIRED PACKAGES
 library(tidyverse)
 library(gridExtra)
+library(kableExtra)
 library(grid)
+library(car)
 ```
   
-#### Merge the raw training and test data and save as an RData file
+    
+#### Merge the raw training and test data and save as an RData file  
 ```{r}
 #FUNCTION TO MERGE ALL TRAINING CASES INTO ONE DATAFRAME AND SAVE AS RData FILE AND MERGE ALL TEST CASES INTO ANOTHER DATAFRAME # This code is based on code provided in the assignment package
 load_cinc_data <- function(fromfile = T){
@@ -68,14 +71,16 @@ load_cinc_data <- function(fromfile = T){
   return(cinc_dat)
 }
 ```
-
-#### Load the merged data to a data frame in the working environment
+  
+  
+#### Load the merged data to a data frame in the working environment  
 ```{r}
 #cinc_data <- load_cinc_data(fromfile = F) #run this to merge data and save RData files if they don't exist yet
 cinc_data <- load_cinc_data() #run this to load merged training data into a data frame called cinc_data if the RData files already exist
 ```
-  
-#### Organize the data
+    
+    
+#### Organize the data  
 ```{r}
 #Get vector with all patient IDs
 patientIDs <- cinc_data %>%
@@ -98,7 +103,8 @@ sepsis <- cinc_data %>%
 no_sepsis <- cinc_data %>%
   filter(patient %in% no_sepsis_patientIDs[[1]])
 ```
-
+  
+  
 #### Start analyzing data
 In the summary table called "means", I have computed the mean value of each vital sign/lab value in the dataset for the following patient groups:
  - All data for sepsis patients, including data before **and** after positive sepsis diagnosis  
@@ -210,10 +216,10 @@ no_sepsis_means <- no_sepsis %>%
   select(Demographic, everything())
 
 means <- rbind(sepsis_means, sepsis_means_after, sepsis_means_before, no_sepsis_means)
-print(means)
+kable(format(means, digits = 5), format = "markdown")
 ```
-
-
+  
+  
 #### Plotting data as boxplots
 ```{r}
 #Create copy of cinc_data with some added labels to help group the data based on sepsis state
@@ -260,8 +266,8 @@ for (i in 1:18) {
 }
 
 ```
-
-
+  
+  
 ```{r}
 #Loop for plotting boxplots for all of the variables
 for (i in 3:20){
@@ -295,9 +301,355 @@ p4 <- cinc_data_2 %>% ggplot(aes(x = LabelB, y = cinc_data_2[,i])) +
 grid.arrange(p1, p2, p3, p4, nrow = 2)
 grid.rect(width = 1, height = 1, gp = gpar(lwd = 2, col = "black", fill = NA))
 }
+```  
+  
+  
+### Significance Testing
+**Using raw data before removing outliers**  
+Results are saved in the statistics variable
+```{r, warning = FALSE}
+#SIGNIFICANCE TESTING FOR RAW DATA BEFORE REMOVING OUTLIERS
+variables <- names(cinc_data[3:20])
+
+levene_pval_2groups <- NULL
+ttest_pval_2groups <- NULL
+levene_pval_3groups <- NULL
+anova_pval_3groups <- NULL
+
+#FOR DATA BEFORE OUTLIER REMOVAL
+for (i in 3:20) {
+  #Levene's test for data stratified based on no sepsis and sepsis
+  #A p-value less than significance suggests that variances are not equal
+  levene_temp_2groups <- leveneTest(cinc_data_1[, i] ~ LabelA, data = cinc_data_1)
+  
+  #Perform t-test for data stratified based on no sepsis and sepsis 
+  if (levene_temp_2groups$`Pr(>F)`[1] < 0.05) { #Variances are not equal
+    ttest_temp_2groups <- t.test(cinc_data_1[, i] ~ LabelA, data = cinc_data_1, var.equal = FALSE, na.action = na.omit)
+  }
+  else { #Variances are equal
+    ttest_temp_2groups <- t.test(cinc_data_1[, i] ~ LabelA, data = cinc_data_1, var.equal = TRUE, na.action = na.omit)
+  }
+  
+  #Levene's test for data stratified based on no sepsis, pre-sepsis, and during sepsis
+  #A p-value less than significance suggests that variances are not equal
+  levene_temp_3groups <- leveneTest(cinc_data_1[, i] ~ LabelB, data = cinc_data_1)
+  
+  #Perform 1-way ANOVA for data stratified based on no sepsis, pre-sepsis, and during sepsis
+  if (levene_temp_3groups$`Pr(>F)`[1] < 0.05) { #Variances are not equal
+    anova_temp_3groups <- oneway.test(cinc_data_1[, i] ~ LabelB, data = cinc_data_1, var.equal = FALSE, na.action = na.omit)
+  }
+  else { #Variances are equal
+    anova_temp_3groups <- oneway.test(cinc_data_1[, i] ~ LabelB, data = cinc_data_1, var.equal = TRUE, na.action = na.omit)
+  }
+  
+  #Extract the p-values from each test
+  levene_pval_2groups <- rbind(levene_pval_2groups, levene_temp_2groups$`Pr(>F)`[1])
+  ttest_pval_2groups <- rbind(ttest_pval_2groups, ttest_temp_2groups$p.value)
+  levene_pval_3groups <- rbind(levene_pval_3groups, levene_temp_3groups$`Pr(>F)`[1])
+  anova_pval_3groups <- rbind(anova_pval_3groups, anova_temp_3groups$p.value)
+}
+
+#Put data in correct format
+statistics <- cbind(variables, levene_pval_2groups, ttest_pval_2groups, levene_pval_3groups,anova_pval_3groups)
+
+statistics <- as.data.frame(statistics)
+colnames(statistics) <- (c("variables", "levene_pval_2groups", "ttest_pval_2groups",
+                           "levene_pval_3groups", "anova_pval_3groups"))
+statistics$levene_pval_2groups <- as.double(statistics$levene_pval_2groups)
+statistics$ttest_pval_2groups <- as.double(statistics$ttest_pval_2groups)
+statistics$levene_pval_3groups <- as.double(statistics$levene_pval_3groups)
+statistics$anova_pval_3groups <- as.double(statistics$anova_pval_3groups)
+
+knitr::kable(format(statistics, digits = 3), format = "markdown")
+```
+   
+    
+**Using raw data after removing outliers**  
+Results are saved in the statistics_outliers_removed variable  
+```{r, warning = FALSE}
+#SIGNIFICANCE TESTING OF DATA AFTER REMOVING OUTLIERS
+variables <- names(cinc_data[3:20])
+
+levene_pval_2groups <- NULL
+ttest_pval_2groups <- NULL
+levene_pval_3groups <- NULL
+anova_pval_3groups <- NULL
+
+#FOR DATA BEFORE OUTLIER REMOVAL
+for (i in 3:20) {
+  #Levene's test for data stratified based on no sepsis and sepsis
+  #A p-value less than significance suggests that variances are not equal
+  levene_temp_2groups <- leveneTest(cinc_data_2[, i] ~ LabelA, data = cinc_data_2)
+  
+  #Perform t-test for data stratified based on no sepsis and sepsis 
+  if (levene_temp_2groups$`Pr(>F)`[1] < 0.05) { #Variances are not equal
+    ttest_temp_2groups <- t.test(cinc_data_2[, i] ~ LabelA, data = cinc_data_2, var.equal = FALSE, na.action = na.omit)
+  }
+  else { #Variances are equal
+    ttest_temp_2groups <- t.test(cinc_data_2[, i] ~ LabelA, data = cinc_data_2, var.equal = TRUE, na.action = na.omit)
+  }
+  
+  #Levene's test for data stratified based on no sepsis, pre-sepsis, and during sepsis
+  #A p-value less than significance suggests that variances are not equal
+  levene_temp_3groups <- leveneTest(cinc_data_2[, i] ~ LabelB, data = cinc_data_2)
+  
+  #Perform 1-way ANOVA for data stratified based on no sepsis, pre-sepsis, and during sepsis
+  if (levene_temp_3groups$`Pr(>F)`[1] < 0.05) { #Variances are not equal
+    anova_temp_3groups <- oneway.test(cinc_data_2[, i] ~ LabelB, data = cinc_data_2, var.equal = FALSE, na.action = na.omit)
+  }
+  else { #Variances are equal
+    anova_temp_3groups <- oneway.test(cinc_data_2[, i] ~ LabelB, data = cinc_data_2, var.equal = TRUE, na.action = na.omit)
+  }
+  
+  #Extract the p-values from each test
+  levene_pval_2groups <- rbind(levene_pval_2groups, levene_temp_2groups$`Pr(>F)`[1])
+  ttest_pval_2groups <- rbind(ttest_pval_2groups, ttest_temp_2groups$p.value)
+  levene_pval_3groups <- rbind(levene_pval_3groups, levene_temp_3groups$`Pr(>F)`[1])
+  anova_pval_3groups <- rbind(anova_pval_3groups, anova_temp_3groups$p.value)
+}
+
+#Put data in correct format
+statistics_outliers_removed <- cbind(variables, levene_pval_2groups, ttest_pval_2groups, levene_pval_3groups,
+                                     anova_pval_3groups)
+
+statistics_outliers_removed <- as.data.frame(statistics_outliers_removed)
+colnames(statistics_outliers_removed) <- (c("variables", "levene_pval_2groups", "ttest_pval_2groups",
+                                            "levene_pval_3groups", "anova_pval_3groups"))
+statistics_outliers_removed$levene_pval_2groups <- as.double(statistics_outliers_removed$levene_pval_2groups)
+statistics_outliers_removed$ttest_pval_2groups <- as.double(statistics_outliers_removed$ttest_pval_2groups)
+statistics_outliers_removed$levene_pval_3groups <- as.double(statistics_outliers_removed$levene_pval_3groups)
+statistics_outliers_removed$anova_pval_3groups <- as.double(statistics_outliers_removed$anova_pval_3groups)
+
+knitr::kable(format(statistics_outliers_removed, digits = 3), format = "markdown")
 ```
 
+### Effect size testing
+Significance testing with p-values can give misleading results when the dataset is extremely large. Namely, when the dataset is very large, even a tiny effect might be interpreted as significant. Statistical significance is effected by the sample size, and increasing sample size always makes it more likely to get a statistically significant effect. Effect sizes represent the practical significance - is the effect large enough to matter in the real world? Effect size depends only on the data and not on the size of the sample, making it a more appropriate metric when dealing with very large datasets [ref](https://www.scribbr.com/statistics/effect-size/#:~:text=Effect%20size%20tells%20you%20how,size%20indicates%20limited%20practical%20applications.).   
+  
+Cohen's d-test is the method I have chosen to analyze effect sizes in this dataset. The *d* value is a measure of how many standard deviations lie between the means of two groups. A *d* value with a magnitude of 0.2 is generally considered to represent a small effect, 0.5 is a medium effect, and 0.8 or greater is a large effect. This test can only be used to compare 2 different groups at a time. As such, I will structure this analysis as follows:  
+- I will calculate *d* for each variable to find the effect size between the no sepsis and sepsis groups (i.e., all patients who never developed sepsis vs. all patients who eventually developed sepsis)  
+- I will then calculate *d* for each variable to find the effect size between the no sepsis group and the   
+  - Pre-sepsis group (data for patients who developed sepsis while SepsisLabel is still 0)  
+  - During sepsis group (data for patients who developed sepsis while SepsisLabel is 1)  
+  
+Note that the sign of d (negative vs. positive) just depends on which group's mean is greater.  
+I will calculate these values for the raw data as well as the data after outlier removal.  
 
+```{r}
+#EFFECT SIZE ANALYSIS
+#Raw data
+variables <- names(cinc_data[3:20])
+
+no_sepsis_mean <- NULL
+sepsis_mean <- NULL
+pre_sepsis_mean <- NULL
+during_sepsis_mean <- NULL
+
+no_sepsis_sd <- NULL
+sepsis_sd <- NULL
+pre_sepsis_sd <- NULL
+during_sepsis_sd <- NULL
+
+d_no_sepsis_v_sepsis <- NULL
+d_no_sepsis_v_pre_sepsis <- NULL
+d_no_sepsis_v_during_sepsis <- NULL
+d_pre_sepsis_v_during_sepsis <- NULL
+
+for (i in 3:20) {
+  #calculate means and standard deviations for each population
+  msd_1 <- cinc_data_1 %>% #no-sepsis group
+    filter(LabelA == "no_sepsis")
+  msd_1 <- msd_1 %>%
+    summarise(mean = mean(msd_1[, i], na.rm = TRUE), sd = sd(msd_1[, i], na.rm = TRUE))
+  m_1 <- msd_1[,1] #mean
+  sd_1 <- msd_1[,2] #standard deviation
+  
+  msd_2 <- cinc_data_1 %>% #sepsis group (all data)
+    filter(LabelA == "sepsis")
+  msd_2 <- msd_2 %>%
+    summarise(mean = mean(msd_2[, i], na.rm = TRUE), sd = sd(msd_2[, i], na.rm = TRUE))
+  m_2 <- msd_2[,1] #mean
+  sd_2 <- msd_2[,2] #standard deviation
+  
+  msd_3 <- cinc_data_1 %>% #pre-sepsis group
+    filter(LabelB == "pre-sepsis") 
+  msd_3 <- msd_3 %>%
+    summarise(mean = mean(msd_3[, i], na.rm = TRUE), sd = sd(msd_3[, i], na.rm = TRUE))
+  m_3 <- msd_3[,1] #mean
+  sd_3 <- msd_3[,2] #standard deviation
+  
+  msd_4 <- cinc_data_1 %>% #during sepsis group
+    filter(LabelB == "during_sepsis")
+  msd_4 <- msd_4 %>%
+    summarise(mean = mean(msd_4[, i], na.rm = TRUE), sd = sd(msd_4[, i], na.rm = TRUE))
+  m_4 <- msd_4[,1] #mean
+  sd_4 <- msd_4[,2] #standard deviation
+  
+  #Calculate d-tests
+  d_12 <- (m_2 - m_1)/(sqrt((sd_2^2 + sd_1^2)/2)) #difference between no-sepsis and sepsis
+  d_13 <- (m_3 - m_1)/(sqrt((sd_3^2 + sd_1^2)/2)) #difference between no-sepsis and pre-sepsis
+  d_14 <- (m_4 - m_1)/(sqrt((sd_4^2 + sd_1^2)/2)) #difference between no-sepsis and during sepsis
+  d_34 <- (m_4 - m_3)/(sqrt((sd_4^2 + sd_3^2)/2)) #difference between pre-sepsis and during sepsis
+  
+  no_sepsis_mean <- rbind(no_sepsis_mean, m_1[1])
+  sepsis_mean <- rbind(sepsis_mean, m_2[1])
+  pre_sepsis_mean <- rbind(pre_sepsis_mean, m_3[1])
+  during_sepsis_mean <- rbind(during_sepsis_mean, m_4[1])
+  
+  no_sepsis_sd <- rbind(no_sepsis_sd, sd_1[1])
+  sepsis_sd <- rbind(sepsis_sd, sd_2[1])
+  pre_sepsis_sd <- rbind(pre_sepsis_sd, sd_3[1])
+  during_sepsis_sd <- rbind(during_sepsis_sd, sd_4[1])
+  
+  d_no_sepsis_v_sepsis <- rbind(d_no_sepsis_v_sepsis, d_12[1])
+  d_no_sepsis_v_pre_sepsis <- rbind(d_no_sepsis_v_pre_sepsis, d_13[1])
+  d_no_sepsis_v_during_sepsis <- rbind(d_no_sepsis_v_during_sepsis, d_14[1])
+  d_pre_sepsis_v_during_sepsis <- rbind(d_pre_sepsis_v_during_sepsis, d_34[1])
+}
+
+dtest <- cbind(variables, no_sepsis_mean, no_sepsis_sd, sepsis_mean, sepsis_sd, pre_sepsis_mean, pre_sepsis_sd,
+               during_sepsis_mean, during_sepsis_sd, d_no_sepsis_v_sepsis, d_no_sepsis_v_pre_sepsis,
+               d_no_sepsis_v_during_sepsis, d_pre_sepsis_v_during_sepsis)
+
+dtest <- as.data.frame(dtest)
+
+colnames(dtest) <- (c("variables", "no sepsis, mean", "no sepsis, sd", "sepsis, mean", "sepsis, sd", 
+                      "pre-sepsis, mean", "pre-sepsis, sd", "during sepsis, mean", "during sepsis, sd", 
+                      "no sepsis vs. sepsis, d", "no sepsis vs. pre-sepsis, d", "no sepsis vs. during sepsis, d",
+                      "pre-sepsis vs. during sepsis, d"))
+
+for (i in 2:13) {
+  dtest[,i] <- as.double(dtest[,i])
+}
+
+#dtest_means <- dtest %>% select(variables, `no sepsis, mean`, `sepsis, mean`, `pre-sepsis, mean`, `during sepsis, mean`)
+#kable(format(dtest_means, digits = 3), format = "markdown")
+
+#dtest_sd <- dtest %>% select(variables, `no sepsis, sd`, `sepsis, sd`, `pre-sepsis, sd`, `during sepsis, sd`)
+#kable(format(dtest_sd, digits = 3), format = "markdown")
+
+dtest_d <- dtest %>% select(variables, `no sepsis vs. sepsis, d`, `no sepsis vs. pre-sepsis, d`, 
+                            `no sepsis vs. during sepsis, d`, `pre-sepsis vs. during sepsis, d`)
+kable(format(dtest_d, digits = 3), format = "markdown")
+```
+
+```{r}
+#EFFECT SIZE ANALYSIS
+#Outliers removed
+variables <- names(cinc_data[3:20])
+
+no_sepsis_mean <- NULL
+sepsis_mean <- NULL
+pre_sepsis_mean <- NULL
+during_sepsis_mean <- NULL
+
+no_sepsis_sd <- NULL
+sepsis_sd <- NULL
+pre_sepsis_sd <- NULL
+during_sepsis_sd <- NULL
+
+d_no_sepsis_v_sepsis <- NULL
+d_no_sepsis_v_pre_sepsis <- NULL
+d_no_sepsis_v_during_sepsis <- NULL
+d_pre_sepsis_v_during_sepsis <- NULL
+
+for (i in 3:20) {
+  #calculate means and standard deviations for each population
+  msd_1 <- cinc_data_2 %>% #no-sepsis group
+    filter(LabelA == "no_sepsis")
+  msd_1 <- msd_1 %>%
+    summarise(mean = mean(msd_1[, i], na.rm = TRUE), sd = sd(msd_1[, i], na.rm = TRUE))
+  m_1 <- msd_1[,1] #mean
+  sd_1 <- msd_1[,2] #standard deviation
+  
+  msd_2 <- cinc_data_2 %>% #sepsis group (all data)
+    filter(LabelA == "sepsis")
+  msd_2 <- msd_2 %>%
+    summarise(mean = mean(msd_2[, i], na.rm = TRUE), sd = sd(msd_2[, i], na.rm = TRUE))
+  m_2 <- msd_2[,1] #mean
+  sd_2 <- msd_2[,2] #standard deviation
+  
+  msd_3 <- cinc_data_2 %>% #pre-sepsis group
+    filter(LabelB == "pre-sepsis") 
+  msd_3 <- msd_3 %>%
+    summarise(mean = mean(msd_3[, i], na.rm = TRUE), sd = sd(msd_3[, i], na.rm = TRUE))
+  m_3 <- msd_3[,1] #mean
+  sd_3 <- msd_3[,2] #standard deviation
+  
+  msd_4 <- cinc_data_2 %>% #during sepsis group
+    filter(LabelB == "during_sepsis")
+  msd_4 <- msd_4 %>%
+    summarise(mean = mean(msd_4[, i], na.rm = TRUE), sd = sd(msd_4[, i], na.rm = TRUE))
+  m_4 <- msd_4[,1] #mean
+  sd_4 <- msd_4[,2] #standard deviation
+  
+  #Calculate d-tests
+  d_12 <- (m_2 - m_1)/(sqrt((sd_2^2 + sd_1^2)/2)) #difference between no-sepsis and sepsis
+  d_13 <- (m_3 - m_1)/(sqrt((sd_3^2 + sd_1^2)/2)) #difference between no-sepsis and pre-sepsis
+  d_14 <- (m_4 - m_1)/(sqrt((sd_4^2 + sd_1^2)/2)) #difference between no-sepsis and during sepsis
+  d_34 <- (m_4 - m_3)/(sqrt((sd_4^2 + sd_3^2)/2)) #difference between pre-sepsis and during sepsis
+  
+  no_sepsis_mean <- rbind(no_sepsis_mean, m_1[1])
+  sepsis_mean <- rbind(sepsis_mean, m_2[1])
+  pre_sepsis_mean <- rbind(pre_sepsis_mean, m_3[1])
+  during_sepsis_mean <- rbind(during_sepsis_mean, m_4[1])
+  
+  no_sepsis_sd <- rbind(no_sepsis_sd, sd_1[1])
+  sepsis_sd <- rbind(sepsis_sd, sd_2[1])
+  pre_sepsis_sd <- rbind(pre_sepsis_sd, sd_3[1])
+  during_sepsis_sd <- rbind(during_sepsis_sd, sd_4[1])
+  
+  d_no_sepsis_v_sepsis <- rbind(d_no_sepsis_v_sepsis, d_12[1])
+  d_no_sepsis_v_pre_sepsis <- rbind(d_no_sepsis_v_pre_sepsis, d_13[1])
+  d_no_sepsis_v_during_sepsis <- rbind(d_no_sepsis_v_during_sepsis, d_14[1])
+  d_pre_sepsis_v_during_sepsis <- rbind(d_pre_sepsis_v_during_sepsis, d_34[1])
+}
+
+dtest_outliers_removed <- cbind(variables, no_sepsis_mean, no_sepsis_sd, sepsis_mean, sepsis_sd, pre_sepsis_mean, pre_sepsis_sd,
+                                during_sepsis_mean, during_sepsis_sd, d_no_sepsis_v_sepsis, d_no_sepsis_v_pre_sepsis,
+                                d_no_sepsis_v_during_sepsis, d_pre_sepsis_v_during_sepsis)
+
+dtest_outliers_removed <- as.data.frame(dtest_outliers_removed)
+
+colnames(dtest_outliers_removed) <- (c("variables", "no sepsis, mean", "no sepsis, sd", "sepsis, mean", "sepsis, sd", 
+                                       "pre-sepsis, mean", "pre-sepsis, sd", "during sepsis, mean", "during sepsis, sd", 
+                                       "no sepsis vs. sepsis, d", "no sepsis vs. pre-sepsis, d", 
+                                       "no sepsis vs. during sepsis, d", "pre-sepsis vs. during sepsis, d"))
+
+for (i in 2:13) {
+  dtest_outliers_removed[,i] <- as.double(dtest_outliers_removed[,i])
+}
+
+#dtest_outliers_removed_means <- dtest_outliers_removed %>% select(variables, `no sepsis, mean`, `sepsis, mean`, `pre-sepsis, mean`, `during sepsis, mean`)
+#kable(format(dtest_outliers_removed_means, digits = 3), format = "markdown")
+
+#dtest_outliers_removed_sd <- dtest_outliers_removed %>% select(variables, `no sepsis, sd`, `sepsis, sd`, `pre-sepsis, sd`,`during sepsis, sd`)
+#kable(format(dtest_outliers_removed_sd, digits = 3), format = "markdown")
+
+dtest_outliers_removed_d <- dtest_outliers_removed %>% select(variables, `no sepsis vs. sepsis, d`, 
+                                                              `no sepsis vs. pre-sepsis, d`, `no sepsis vs. during sepsis, d`, 
+                                                              `pre-sepsis vs. during sepsis, d`)
+kable(format(dtest_outliers_removed_d, digits = 3), format = "markdown")
+```
+  
+  
+In general, the variables with the greatest d values should be the strongest predictors of sepsis. In particular, the most valuable d values are likely the no sepsis vs. pre-sepsis values (i.e., which variables change the most leading up to sepsis?), followed by no sepsis vs. sepsis and no sepsis vs. during sepsis (i.e., which variables change the most due to sepsis?). Moreover, for a good predictor of sepsis, we would likely expect the d value for no sepsis vs. pre sepsis to be smaller than the no sepsis vs. during sepsis (i.e., effects should be more pronounced after diagnosis). If a variable has a small d value for no sepsis vs. during sepsis, but a large d value for no sepsis vs. pre-sepsis, it likely is not a good predictor and may not actually be associated with sepsis. Similarly, if the d value for no sepsis vs. pre-sepsis and no sepsis vs. during sepsis have different signs, it also is likely not a good predictor. 
+  
+From these results, the strongest predictors of sepsis appear to be the following:  
+ - HR  
+ - SBP  
+ - MAP  
+ - Resp  
+ - BUN  
+ - Creatinine  
+ - WBC  
+  
+  
+The poorest predictors are (different signs for no sepsis vs. pre-sepsis and no sepsis vs. during sepsis - i.e., they may be misleasing):  
+ - Temp  
+ - FiO2  
+ - Potassium  
+  
 ```{r, include = FALSE}
 #Code chunk for manually plotting one variable at a time
 #raw data
