@@ -9,19 +9,28 @@ output: github_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## BMEG 423/523 CDSS Assignment
-### Initial Data Exploration
+# BMEG 423/523 CDSS Assignment
+## Initial Data Exploration
 Team 2  
 2023-11-20  
  
 The training and test data used in this project are from the 2019 PhysioNet Computing in Cardiology Challenge. More information about the challenge can be found [here](https://physionet.org/content/challenge-2019/1.0.0/).
  
-This document includes the following:  
-  1. R code to merge all training cases into a single dataframe (which can be easily exported to a csv)  
-  2. Plots illustrating the characteristics of the dataset  
-      b. Comparing patients who never had sepsis to those who didn't have sepsis initially, but developed it, and those who had sepsis from the beginning of the dataset  
-      c. Characteristics of patient data 4-6 hours prior to sepsis diagnosis  
-  
+This markdown file documents data exploration and analysis for the training dataset. The results of this data analysis will guide the design of a clinical decision support model for early prediction of sepsis in ICU patients. This data exploration and analysis includes the following:  
+  1. The raw training and test data, organized as separate files for each patient, are merged into single csv files and loaded as data frames.  
+  2. Two additional categorical variables are added to the data to stratify different sepsis "states"  
+     a) `LabelA` stratifies patients as `sepsis` (patients who developed sepsis) and `no_sepsis` (patients who never developed sepsis).  
+     b) `LabelB` stratifies patients as `no_sepsis` (patients who never developed sepsis), `pre-sepsis` (data for patients who eventually developed sepsis prior to their positive diagnosis), and `during_sepsis` (data for patients who developed sepsis after their positive diagnosis).    
+  3. Mean values for each variable (vital sign/lab value) in the raw dataset are calculated for the different sepsis states.   
+  4. Data is pre-processed   
+     a) Outlier values are removed  
+     b) NA values are filled by grouping by patient, forward filling, then backward filling. An additional variable called `Shock` for shock index (`HR/MAP`) is added to this dataset. Note that this variable was not added to the versions of the dataset before NA filling to avoid diviison by NA values.   w
+  5. Box plots are generated for each variable to visualize differences between the different sepsis states in the raw dataset as well as the dataset with outliers removed and the dataset with outliers removed and NA values filled.  
+  6. T-tests and ANOVA tests are performed to evaluate the significance of differences in different variables (vital signs/lab values) between the different sepsis states.  
+  7. Effect size testing using Cohen's d-test is performed to further evaluate the magnitude of differences in all variables between the different sepsis states.  
+   
+   
+**Load packages required for data exploration and analysis** 
 ```{r, message = FALSE}
 #LOAD REQUIRED PACKAGES
 library(tidyverse)
@@ -32,7 +41,7 @@ library(car)
 ```
   
     
-#### Merge the raw training and test data and save as an RData file  
+### 1. Merge the raw training and test data and save as an RData file  
 ```{r}
 #FUNCTION TO MERGE ALL TRAINING CASES INTO ONE DATAFRAME AND SAVE AS RData FILE AND MERGE ALL TEST CASES INTO ANOTHER DATAFRAME # This code is based on code provided in the assignment package
 load_cinc_data <- function(fromfile = T){
@@ -73,14 +82,14 @@ load_cinc_data <- function(fromfile = T){
 ```
   
   
-#### Load the merged data to a data frame in the working environment  
+**Load the merged data to a data frame in the working environment**  
 ```{r}
 #cinc_data <- load_cinc_data(fromfile = F) #run this to merge data and save RData files if they don't exist yet
 cinc_data <- load_cinc_data() #run this to load merged training data into a data frame called cinc_data if the RData files already exist
 ```
     
     
-#### Organize the data  
+### 2. Groom the data - add additional labels to specify sepsis "state"  
 ```{r}
 #Get vector with all patient IDs
 patientIDs <- cinc_data %>%
@@ -105,16 +114,15 @@ no_sepsis <- cinc_data %>%
 ```
   
   
-#### Start analyzing data
-In the summary table called "means", I have computed the mean value of each vital sign/lab value in the dataset for the following patient groups:
+### 3. Calculate mean values for the raw dataset
+In the summary table called `means`, I have computed the mean value of each vital sign/lab value in the dataset for the following patient groups:
  - All data for sepsis patients, including data before **and** after positive sepsis diagnosis  
- - Data for sepsis patients after their positive sepsis diagnosis (only including rows of data where SepsisLabel = 1)  
- - Data for sepsis patients before their positive sepsis diagnosis (only including rows of data where SepsisLabel = 0)  
- - All data for patients who never developed sepsis (patients for which SepsisLabel = 0 throuhgout their ICU stay)  
+ - Data for sepsis patients after their positive sepsis diagnosis (only including rows of data where `SepsisLabel` = 1)  
+ - Data for sepsis patients before their positive sepsis diagnosis (only including rows of data where `SepsisLabel` = 0)  
+ - All data for patients who never developed sepsis (patients for which `SepsisLabel` = 0 throughout their ICU stay)  
    
-These mean values were calculated without cleaning or modifying any values in the dataset. NA values were removed from the computations.  
+These mean values were calculated prior to outlier removal and NA filling. NA values were excluded from the computations here.  
   
-**Note:** I have not yet dealt with missing values (filling in or interpolating) - this could affect the means.  
 
 ```{r, echo = FALSE}
 # Means computed for all sepsis-positive patient data (including data before and after positive sepsis diagnosis)
@@ -220,7 +228,8 @@ kable(format(means, digits = 5), format = "markdown")
 ```
   
   
-#### Plotting data as boxplots
+### 4. Pre-Processing/data cleaning     
+#### a) Outlier removal    
 ```{r}
 #Create copy of cinc_data with some added labels to help group the data based on sepsis state
 cinc_data_1 <- cinc_data %>%
@@ -258,7 +267,7 @@ minmax <- tribble(
   "Age", 0, 150
 )
 
-#Replace outliers with NA using the min and max valuesin minmax
+#Replace outliers with NA using the min and max values in minmax
 cinc_data_2 <- cinc_data_1
 for (i in 1:18) {
   cinc_data_2[minmax[[1]][i]][cinc_data_2[minmax[[1]][i]] < minmax[[2]][i] | 
@@ -267,11 +276,49 @@ for (i in 1:18) {
 
 ```
   
-  
+#### b) Filling in NA values      
+ - Start with the data frame in which outliers have been removed  
+ - Group by patient  
+ - Then, forward fill to replace most NA values with the last non-NA value  
+ - Then, backward fill to replace NA values at the beginning of each patient's dataset that were before the first recorded non-NA values  
+ - If a variable was never measured for a given patient, leave this as NA and ignore NA values in subsequent analyses. Alternatively, these remaining NA values could be replaced by a population mean.  
+ - Add a variable called `Shock` for the shock index = `HR/MAP`  
 ```{r}
+#Make a data frame called cinc_data_3 in which NA values have been replaced
+cinc_data_3 <- cinc_data_2
+cinc_data_3 <- cinc_data_3 %>%
+  group_by(patient) %>%
+  fill(everything(), .direction = "downup") %>%
+  ungroup()
+cinc_data_3 <- as.data.frame(cinc_data_3)
+
+#Add shock index
+cinc_data_3 <- cinc_data_3 %>%
+  mutate(Shock = HR/MAP) %>%
+  select(patient, ICULOS, HR, O2Sat, Temp, SBP, MAP, DBP, Resp, FiO2, pH, BUN, Creatinine, 
+         Glucose, Magnesium, Potassium, Hct, Hgb, WBC, Age, Shock, everything())
+```
+    
+    
+### 5. Plotting data as boxplots  
+In this section, boxplots have been created for each variable (vital sign/biomarker) using each of the three versions of the training dataset:  
+ - `cinc_data_1`: raw, merged dataset with labels added for sepsis state (`LabelA`: `no_sepsis` vs. `sepsis`, `LabelB`: `no_sepsis` vs. `pre-sepsis` vs. `during_sepsis`)  
+ - `cinc_data_2`: same as `cinc_data_1`, but with outliers removed based on lower and upper bounds reported by [Firoozabadi & Babaeizadeh, 2019](cinc.org/archives/2019/pdf/CinC2019-023.pdf)  
+ - `cinc_data_3`: same as `cinc_data_2`, but with NA values removed by first grouping by patient, forward filling, then back filling. For patients for whom one or more vital signs were never measured, the values are still left blank. Shock index (variable called `Shock`) was also calculated in this dataset as `HR/MAP`.   
+  
+Boxplots in which patients have been stratified into two or three sepsis groups are included for each variable and dataset:  
+ - In the first boxplot, the two groups are `no_sepsis` and `sepsis`.  
+   - The `no_sepsis` group includes all data for patients who never developed sepsis  
+   - The `sepsis` group includes all data for patients who developed sepsis at some point (including data recorded before and after their sepsis diagnosis)   
+ - In the second boxplot, the three groups are `no_sepsis`, `pre-sepsis`, and `during_sepsis`  
+   - The `no_sepsis` group includes all data for patients who never developed sepsis  
+   - The `pre-sepsis` group includes data for patients who eventually developed sepsis when their `SepsisLabel` was still 0 (before the positive sepsis diagnosis)  
+   - The `during_sepsis` group includes data for patients who eventually developed sepsis when their `SepsisLabel` was 1 (after the positive sepsis diagnosis)  
+   
+```{r, fig.height = 5, fig.width = 7}
 #Loop for plotting boxplots for all of the variables
 for (i in 3:20){
-  p1 <- cinc_data_1 %>% ggplot(aes(x = LabelA, y = cinc_data_1[,i])) +
+p1 <- cinc_data_1 %>% ggplot(aes(x = LabelA, y = cinc_data_1[,i])) +
   geom_boxplot(na.rm = TRUE) +
   xlab("Sepsis status") +
   ylab(names(cinc_data_1[i])) +
@@ -282,7 +329,8 @@ p2 <- cinc_data_1 %>% ggplot(aes(x = LabelB, y = cinc_data_1[,i])) +
   xlab("Sepsis status") +
   ylab(names(cinc_data_1[i])) +
   ggtitle("Raw data") +
-  theme_minimal()
+  theme_minimal() +
+  scale_x_discrete(guide = guide_axis(angle = 45))
 
 #outliers removed
 p3 <- cinc_data_2 %>% ggplot(aes(x = LabelA, y = cinc_data_2[,i])) +
@@ -296,22 +344,54 @@ p4 <- cinc_data_2 %>% ggplot(aes(x = LabelB, y = cinc_data_2[,i])) +
   xlab("Sepsis status") +
   ylab(names(cinc_data_2[i])) +
   ggtitle("Outliers removed") +
-  theme_minimal()
+  theme_minimal() +
+  scale_x_discrete(guide = guide_axis(angle = 45))
 
-grid.arrange(p1, p2, p3, p4, nrow = 2)
+#outliers removed and NA values forward and back filled
+p5 <- cinc_data_3 %>% ggplot(aes(x = LabelA, y = cinc_data_3[,i])) +
+  geom_boxplot(na.rm = TRUE) +
+  xlab("Sepsis status") +
+  ylab(names(cinc_data_3[i])) +
+  ggtitle("NAs fwd/bk filled") +
+  theme_minimal()
+p6 <- cinc_data_3 %>% ggplot(aes(x = LabelB, y = cinc_data_3[,i])) +
+  geom_boxplot(na.rm = TRUE) +
+  xlab("Sepsis status") +
+  ylab(names(cinc_data_3[i])) +
+  ggtitle("NAs fwd/bk filled") +
+  theme_minimal() +
+  scale_x_discrete(guide = guide_axis(angle = 45))
+
+grid.arrange(p1, p3, p5, p2, p4, p6, nrow = 2, heights = c(4, 5))
 grid.rect(width = 1, height = 1, gp = gpar(lwd = 2, col = "black", fill = NA))
 }
-```  
-  
-  
-### Significance Testing  
-  
-In this section, I performed t-tests and ANOVA tests to check the significance of variation in different variables in the patient data due to sepsis. T-tests were performed to compare the no sepsis vs. sepsis groups (e.g., all data for patients who never developed sepsis vs. all data for patients who eventually developed sepsis). ANOVA tests were used to compare the no sepsis vs. pre-sepsis and during sepsis groups. Significance was evaluated based on p-values. Levine tests were done prior to t-tests and ANOVA tests to evaluate if variances were equal or not to inform the way in which R's t-test and ANOVA functions were applied to the dataset. Results are tabulated below for the raw data and data with outliers removed. In general, more significant variables should have smaller p-values.  
+
+#Also plot shock index for the dataset in which outliers have been removed and NAs have been filled
+p7 <- cinc_data_3 %>% ggplot(aes(x = LabelA, y = Shock)) +
+  geom_boxplot(na.rm = TRUE) +
+  xlab("Sepsis status") +
+  ylab("Shock index") +
+  ggtitle("NAs fwd/bk filled") +
+  theme_minimal()
+p8 <- cinc_data_3 %>% ggplot(aes(x = LabelB, y = Shock)) +
+  geom_boxplot(na.rm = TRUE) +
+  xlab("Sepsis status") +
+  ylab("Shock index") +
+  ggtitle("NAs fwd/bk filled") +
+  theme_minimal()
+
+grid.arrange(p7, p8, nrow = 1)
+grid.rect(width = 1, height = 1, gp = gpar(lwd = 2, col = "black", fill = NA))
+```
+
+
+### 6. Significance Testing   
+In this section, I performed t-tests and ANOVA tests to check the significance of variation in different variables in the patient data due to sepsis. T-tests were performed to compare the no sepsis vs. sepsis groups (e.g., all data for patients who never developed sepsis vs. all data for patients who eventually developed sepsis). ANOVA tests were used to compare the no sepsis vs. pre-sepsis and during sepsis groups. Significance was evaluated based on p-values. Levine tests were done prior to t-tests and ANOVA tests to evaluate if variances were equal or not to inform the way in which R's t-test and ANOVA functions were applied to the dataset. Namely, if the Levine test p-value was less than 0.05, `var.equal` was set to `FALSE` in the t-test/ANOVA test. Results are tabulated below for the raw data, data with outliers removed, and data with outliers removed and NA values filled. In general, more significant variables should have smaller p-values.  
   
 **Note:** this type of significance testing is not typically the best for large datasets like this, as p-values depend on the sample size. See the section below on effect size testing for more valuable information.  
   
-**Using raw data before removing outliers**  
-Results are saved in the statistics variable
+#### a) Using raw data before removing outliers  
+Results are saved in the statistics variable. In the table summarizing the results below, vital signs/lab values are arranged in descending order of significance (ascending p-values) based on the t-test comparing no sepsis vs. sepsis patients.    
 ```{r, warning = FALSE}
 #SIGNIFICANCE TESTING FOR RAW DATA BEFORE REMOVING OUTLIERS
 variables <- names(cinc_data[3:20])
@@ -365,12 +445,15 @@ statistics$ttest_pval_2groups <- as.double(statistics$ttest_pval_2groups)
 statistics$levene_pval_3groups <- as.double(statistics$levene_pval_3groups)
 statistics$anova_pval_3groups <- as.double(statistics$anova_pval_3groups)
 
-knitr::kable(format(statistics, digits = 3), format = "markdown")
+#Arrange data in ascending order of ttest_pval_2groups and print the table
+table <- statistics %>%
+  arrange(ttest_pval_2groups)
+kable(format(table, digits = 3), format = "markdown")
 ```
    
     
-**Using raw data after removing outliers**  
-Results are saved in the statistics_outliers_removed variable  
+#### b) Using raw data after removing outliers  
+Results are saved in the statistics_outliers_removed variable. In the table summarizing the results below, vital signs/lab values are arranged in descending order of significance (ascending p-values) based on the t-test comparing no sepsis vs. sepsis patients.     
 ```{r, warning = FALSE}
 #SIGNIFICANCE TESTING OF DATA AFTER REMOVING OUTLIERS
 variables <- names(cinc_data[3:20])
@@ -380,7 +463,7 @@ ttest_pval_2groups <- NULL
 levene_pval_3groups <- NULL
 anova_pval_3groups <- NULL
 
-#FOR DATA BEFORE OUTLIER REMOVAL
+#FOR DATA AFTER OUTLIER REMOVAL
 for (i in 3:20) {
   #Levene's test for data stratified based on no sepsis and sepsis
   #A p-value less than significance suggests that variances are not equal
@@ -425,21 +508,91 @@ statistics_outliers_removed$ttest_pval_2groups <- as.double(statistics_outliers_
 statistics_outliers_removed$levene_pval_3groups <- as.double(statistics_outliers_removed$levene_pval_3groups)
 statistics_outliers_removed$anova_pval_3groups <- as.double(statistics_outliers_removed$anova_pval_3groups)
 
-knitr::kable(format(statistics_outliers_removed, digits = 3), format = "markdown")
+#Arrange data in ascending order of ttest_pval_2groups and print the table
+table <- statistics_outliers_removed %>%
+  arrange(ttest_pval_2groups)
+kable(format(table, digits = 3), format = "markdown")
 ```
-
-### Effect size testing
-Significance testing with p-values can give misleading results when the dataset is extremely large. Namely, when the dataset is very large, even a tiny effect might be interpreted as significant. Statistical significance is effected by the sample size, and increasing sample size always makes it more likely to get a statistically significant effect. Effect sizes represent the practical significance - is the effect large enough to matter in the real world? Effect size depends only on the data and not on the size of the sample, making it a more appropriate metric when dealing with very large datasets [ref](https://www.scribbr.com/statistics/effect-size/#:~:text=Effect%20size%20tells%20you%20how,size%20indicates%20limited%20practical%20applications.).   
   
-Cohen's d-test is the method I have chosen to analyze effect sizes in this dataset. The *d* value is a measure of how many standard deviations lie between the means of two groups. A *d* value with a magnitude of 0.2 is generally considered to represent a small effect, 0.5 is a medium effect, and 0.8 or greater is a large effect. This test can only be used to compare 2 different groups at a time. As such, I will structure this analysis as follows:  
+#### c) Using data with outliers removed and NAs forward- then back-filled  
+Results are saved in the statistics_filled variable. In the table summarizing the results below, vital signs/lab values are arranged in descending order of significance (ascending p-values) based on the t-test comparing no sepsis vs. sepsis patients.   
+```{r, warning = FALSE}
+#SIGNIFICANCE TESTING OF DATA AFTER REMOVING OUTLIERS AND FILLING NA VALUES
+variables <- names(cinc_data_3[3:21])
+
+levene_pval_2groups <- NULL
+ttest_pval_2groups <- NULL
+levene_pval_3groups <- NULL
+anova_pval_3groups <- NULL
+
+#FOR DATA AFTER OUTLIER REMOVAL AND NA FILLING
+for (i in 3:21) {
+  #Levene's test for data stratified based on no sepsis and sepsis
+  #A p-value less than significance suggests that variances are not equal
+  levene_temp_2groups <- leveneTest(cinc_data_3[, i] ~ LabelA, data = cinc_data_3)
+  
+  #Perform t-test for data stratified based on no sepsis and sepsis 
+  if (levene_temp_2groups$`Pr(>F)`[1] < 0.05) { #Variances are not equal
+    ttest_temp_2groups <- t.test(cinc_data_3[, i] ~ LabelA, data = cinc_data_3, var.equal = FALSE, na.action = na.omit)
+  }
+  else { #Variances are equal
+    ttest_temp_2groups <- t.test(cinc_data_3[, i] ~ LabelA, data = cinc_data_3, var.equal = TRUE, na.action = na.omit)
+  }
+  
+  #Levene's test for data stratified based on no sepsis, pre-sepsis, and during sepsis
+  #A p-value less than significance suggests that variances are not equal
+  levene_temp_3groups <- leveneTest(cinc_data_3[, i] ~ LabelB, data = cinc_data_3)
+  
+  #Perform 1-way ANOVA for data stratified based on no sepsis, pre-sepsis, and during sepsis
+  if (levene_temp_3groups$`Pr(>F)`[1] < 0.05) { #Variances are not equal
+    anova_temp_3groups <- oneway.test(cinc_data_3[, i] ~ LabelB, data = cinc_data_3, var.equal = FALSE, na.action = na.omit)
+  }
+  else { #Variances are equal
+    anova_temp_3groups <- oneway.test(cinc_data_3[, i] ~ LabelB, data = cinc_data_3, var.equal = TRUE, na.action = na.omit)
+  }
+  
+  #Extract the p-values from each test
+  levene_pval_2groups <- rbind(levene_pval_2groups, levene_temp_2groups$`Pr(>F)`[1])
+  ttest_pval_2groups <- rbind(ttest_pval_2groups, ttest_temp_2groups$p.value)
+  levene_pval_3groups <- rbind(levene_pval_3groups, levene_temp_3groups$`Pr(>F)`[1])
+  anova_pval_3groups <- rbind(anova_pval_3groups, anova_temp_3groups$p.value)
+}
+
+#Put data in correct format
+statistics_filled <- cbind(variables, levene_pval_2groups, ttest_pval_2groups, levene_pval_3groups,
+                                     anova_pval_3groups)
+
+statistics_filled <- as.data.frame(statistics_filled)
+colnames(statistics_filled) <- (c("variables", "levene_pval_2groups", "ttest_pval_2groups",
+                                  "levene_pval_3groups", "anova_pval_3groups"))
+statistics_filled$levene_pval_2groups <- as.double(statistics_filled$levene_pval_2groups)
+statistics_filled$ttest_pval_2groups <- as.double(statistics_filled$ttest_pval_2groups)
+statistics_filled$levene_pval_3groups <- as.double(statistics_filled$levene_pval_3groups)
+statistics_filled$anova_pval_3groups <- as.double(statistics_filled$anova_pval_3groups)
+
+#Arrange data in ascending order of ttest_pval_2groups and print the table
+table <- statistics_filled %>%
+  arrange(ttest_pval_2groups)
+kable(format(table, digits = 3), format = "markdown")
+```
+  
+The p-values calculated for all three versions of the dataset show similar trends in terms of which variables are most significantly associated with sepsis state. All results highlight that HR, Resp, and BUN have high significance. The results for the raw dataset and dataset with outliers removed are very similar, while results are slightly different for the dataset with outliers removed and NAs filled. Additionally, the significance levels are generally higher in the dataset with filling, likley because this increases the sample sizes.   
+  
+As we plan to use outlier removal and NA filling in the CDSS model, the results for this dataset are likely most informative for guiding the selection of variables to include/exclude in the model. From these results, we can also see that shock index might be a strong predictor of sepsis. 
+  
+### 7. Effect size testing
+Significance testing with p-values can give misleading results when the dataset is extremely large. Namely, when the dataset is very large, even a tiny effect might be interpreted as significant. Statistical significance is effected by the sample size, and increasing sample size always makes it more likely to get a statistically significant effect. As stated by [Nakagawa & Cuthill, 2007](https://onlinelibrary.wiley.com/doi/full/10.1111/j.1469-185X.2007.00027.x?casa_token=tR9tBq2c9kUAAAAA%3A9H_DGj5JmeUWMjt8dlik2N93nRovIHOMRYS6NiVQXcA0XpCjJkm1u1U3mvKx_gm_WKw9v2h_P259DbA), "with sufficient measurement precision and a large enough sample size one can always obtain a (statistically) non-zero effect." Effect sizes represent the practical significance - is the effect large enough to matter in the real world? Effect size depends only on the data and not on the size of the sample, making it a more appropriate metric when dealing with very large datasets [ref](https://www.scribbr.com/statistics/effect-size/#:~:text=Effect%20size%20tells%20you%20how,size%20indicates%20limited%20practical%20applications.).     
+  
+Cohen's d-test is the method I have chosen to analyze effect sizes in this dataset [[ref1](https://onlinelibrary.wiley.com/doi/full/10.1111/j.1469-185X.2007.00027.x?casa_token=tR9tBq2c9kUAAAAA%3A9H_DGj5JmeUWMjt8dlik2N93nRovIHOMRYS6NiVQXcA0XpCjJkm1u1U3mvKx_gm_WKw9v2h_P259DbA), [ref2](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5133225/)]. The *d* value is a measure of how many standard deviations lie between the means of two groups. A *d* value with a magnitude of 0.2 is generally considered to represent a small effect, 0.5 is a medium effect, and 0.8 or greater is a large effect. This test can only be used to compare 2 different groups at a time. As such, I will structure this analysis as follows:  
 - I will calculate *d* for each variable to find the effect size between the no sepsis and sepsis groups (i.e., all patients who never developed sepsis vs. all patients who eventually developed sepsis)  
 - I will then calculate *d* for each variable to find the effect size between the no sepsis group and the   
   - Pre-sepsis group (data for patients who developed sepsis while SepsisLabel is still 0)  
   - During sepsis group (data for patients who developed sepsis while SepsisLabel is 1)  
   
 Note that the sign of d (negative vs. positive) just depends on which group's mean is greater.  
-I will calculate these values for the raw data as well as the data after outlier removal.  
-
+I will calculate these values for the raw data as well as the data after outlier removal and the data after outlier removal and NA filling. Also note that the d-test calculation assumes that the different groups have equal variances (reasonable assumption if the variance of group 1 is between 0.5 and 2 times the variance of group 2). I did not assess this in detail, so it may not be completely true.     
+  
+#### a) Raw Data   
 ```{r}
 #EFFECT SIZE ANALYSIS
 #Raw data
@@ -464,13 +617,22 @@ for (i in 3:20) {
   #calculate means and standard deviations for each population
   msd_1 <- cinc_data_1 %>% #no-sepsis group
     filter(LabelA == "no_sepsis")
+  n_1 <- msd_1 %>%
+    filter(!is.na(msd_1[, i])) %>%
+    summarise(n = n())
+  n_1 <- n_1[, 1] #sample size
   msd_1 <- msd_1 %>%
     summarise(mean = mean(msd_1[, i], na.rm = TRUE), sd = sd(msd_1[, i], na.rm = TRUE))
   m_1 <- msd_1[,1] #mean
   sd_1 <- msd_1[,2] #standard deviation
+
   
   msd_2 <- cinc_data_1 %>% #sepsis group (all data)
     filter(LabelA == "sepsis")
+  n_2 <- msd_2 %>%
+    filter(!is.na(msd_2[, i])) %>%
+    summarise(n = n())
+  n_2 <- n_2[, 1] #sample size
   msd_2 <- msd_2 %>%
     summarise(mean = mean(msd_2[, i], na.rm = TRUE), sd = sd(msd_2[, i], na.rm = TRUE))
   m_2 <- msd_2[,1] #mean
@@ -478,6 +640,10 @@ for (i in 3:20) {
   
   msd_3 <- cinc_data_1 %>% #pre-sepsis group
     filter(LabelB == "pre-sepsis") 
+  n_3 <- msd_3 %>%
+    filter(!is.na(msd_3[, i])) %>%
+    summarise(n = n())
+  n_3 <- n_3[, 1] #sample size
   msd_3 <- msd_3 %>%
     summarise(mean = mean(msd_3[, i], na.rm = TRUE), sd = sd(msd_3[, i], na.rm = TRUE))
   m_3 <- msd_3[,1] #mean
@@ -485,16 +651,20 @@ for (i in 3:20) {
   
   msd_4 <- cinc_data_1 %>% #during sepsis group
     filter(LabelB == "during_sepsis")
+  n_4 <- msd_4 %>%
+    filter(!is.na(msd_4[, i])) %>%
+    summarise(n = n())
+  n_4 <- n_4[, 1] #sample size
   msd_4 <- msd_4 %>%
     summarise(mean = mean(msd_4[, i], na.rm = TRUE), sd = sd(msd_4[, i], na.rm = TRUE))
   m_4 <- msd_4[,1] #mean
   sd_4 <- msd_4[,2] #standard deviation
   
   #Calculate d-tests
-  d_12 <- (m_2 - m_1)/(sqrt((sd_2^2 + sd_1^2)/2)) #difference between no-sepsis and sepsis
-  d_13 <- (m_3 - m_1)/(sqrt((sd_3^2 + sd_1^2)/2)) #difference between no-sepsis and pre-sepsis
-  d_14 <- (m_4 - m_1)/(sqrt((sd_4^2 + sd_1^2)/2)) #difference between no-sepsis and during sepsis
-  d_34 <- (m_4 - m_3)/(sqrt((sd_4^2 + sd_3^2)/2)) #difference between pre-sepsis and during sepsis
+  d_12 <- (m_2 - m_1)/(sqrt(((n_2 - 1)*sd_2^2 + (n_1 - 1)*sd_1^2)/(n_2 + n_1 - 2))) #difference b/w no-sepsis and sepsis
+  d_13 <- (m_3 - m_1)/(sqrt(((n_3 - 1)*sd_3^2 + (n_1 - 1)*sd_1^2)/(n_3 + n_1 - 2))) #difference b/w no-sepsis and pre-sepsis
+  d_14 <- (m_4 - m_1)/(sqrt(((n_4 - 1)*sd_4^2 + (n_1 - 1)*sd_1^2)/(n_4 + n_1 - 2))) #difference b/w no-sepsis and during sepsis
+  d_34 <- (m_4 - m_3)/(sqrt(((n_4 - 1)*sd_4^2 + (n_3 - 1)*sd_3^2)/(n_4 + n_3 - 2))) #difference b/w pre-sepsis and during sepsis
   
   no_sepsis_mean <- rbind(no_sepsis_mean, m_1[1])
   sepsis_mean <- rbind(sepsis_mean, m_2[1])
@@ -535,9 +705,17 @@ for (i in 2:13) {
 
 dtest_d <- dtest %>% select(variables, `no sepsis vs. sepsis, d`, `no sepsis vs. pre-sepsis, d`, 
                             `no sepsis vs. during sepsis, d`, `pre-sepsis vs. during sepsis, d`)
-kable(format(dtest_d, digits = 3), format = "markdown")
-```
 
+#Order the data in descending order based on the d value for no sepsis vs. pre-sepsis
+table <- dtest_d %>%
+  mutate(`no sepsis vs. pre-sepsis, abs(d)` = abs(`no sepsis vs. pre-sepsis, d`)) %>%
+  arrange(desc(`no sepsis vs. pre-sepsis, abs(d)`)) %>%
+  select(-`no sepsis vs. pre-sepsis, abs(d)`)
+
+kable(format(table, digits = 3), format = "markdown")
+```
+  
+#### b) Outliers removed  
 ```{r}
 #EFFECT SIZE ANALYSIS
 #Outliers removed
@@ -562,6 +740,10 @@ for (i in 3:20) {
   #calculate means and standard deviations for each population
   msd_1 <- cinc_data_2 %>% #no-sepsis group
     filter(LabelA == "no_sepsis")
+  n_1 <- msd_1 %>%
+    filter(!is.na(msd_1[, i])) %>%
+    summarise(n = n())
+  n_1 <- n_1[, 1] #sample size
   msd_1 <- msd_1 %>%
     summarise(mean = mean(msd_1[, i], na.rm = TRUE), sd = sd(msd_1[, i], na.rm = TRUE))
   m_1 <- msd_1[,1] #mean
@@ -569,6 +751,10 @@ for (i in 3:20) {
   
   msd_2 <- cinc_data_2 %>% #sepsis group (all data)
     filter(LabelA == "sepsis")
+  n_2 <- msd_2 %>%
+    filter(!is.na(msd_2[, i])) %>%
+    summarise(n = n())
+  n_2 <- n_2[, 1] #sample size
   msd_2 <- msd_2 %>%
     summarise(mean = mean(msd_2[, i], na.rm = TRUE), sd = sd(msd_2[, i], na.rm = TRUE))
   m_2 <- msd_2[,1] #mean
@@ -576,6 +762,10 @@ for (i in 3:20) {
   
   msd_3 <- cinc_data_2 %>% #pre-sepsis group
     filter(LabelB == "pre-sepsis") 
+  n_3 <- msd_3 %>%
+    filter(!is.na(msd_3[, i])) %>%
+    summarise(n = n())
+  n_3 <- n_3[, 1] #sample size
   msd_3 <- msd_3 %>%
     summarise(mean = mean(msd_3[, i], na.rm = TRUE), sd = sd(msd_3[, i], na.rm = TRUE))
   m_3 <- msd_3[,1] #mean
@@ -583,16 +773,21 @@ for (i in 3:20) {
   
   msd_4 <- cinc_data_2 %>% #during sepsis group
     filter(LabelB == "during_sepsis")
+  n_4 <- msd_4 %>%
+    filter(!is.na(msd_4[, i])) %>%
+    summarise(n = n())
+  n_4 <- n_4[, 1] #sample size
   msd_4 <- msd_4 %>%
     summarise(mean = mean(msd_4[, i], na.rm = TRUE), sd = sd(msd_4[, i], na.rm = TRUE))
   m_4 <- msd_4[,1] #mean
   sd_4 <- msd_4[,2] #standard deviation
   
   #Calculate d-tests
-  d_12 <- (m_2 - m_1)/(sqrt((sd_2^2 + sd_1^2)/2)) #difference between no-sepsis and sepsis
-  d_13 <- (m_3 - m_1)/(sqrt((sd_3^2 + sd_1^2)/2)) #difference between no-sepsis and pre-sepsis
-  d_14 <- (m_4 - m_1)/(sqrt((sd_4^2 + sd_1^2)/2)) #difference between no-sepsis and during sepsis
-  d_34 <- (m_4 - m_3)/(sqrt((sd_4^2 + sd_3^2)/2)) #difference between pre-sepsis and during sepsis
+  #Calculate d-tests
+  d_12 <- (m_2 - m_1)/(sqrt(((n_2 - 1)*sd_2^2 + (n_1 - 1)*sd_1^2)/(n_2 + n_1 - 2))) #difference b/w no-sepsis and sepsis
+  d_13 <- (m_3 - m_1)/(sqrt(((n_3 - 1)*sd_3^2 + (n_1 - 1)*sd_1^2)/(n_3 + n_1 - 2))) #difference b/w no-sepsis and pre-sepsis
+  d_14 <- (m_4 - m_1)/(sqrt(((n_4 - 1)*sd_4^2 + (n_1 - 1)*sd_1^2)/(n_4 + n_1 - 2))) #difference b/w no-sepsis and during sepsis
+  d_34 <- (m_4 - m_3)/(sqrt(((n_4 - 1)*sd_4^2 + (n_3 - 1)*sd_3^2)/(n_4 + n_3 - 2))) #difference b/w pre-sepsis and during sepsis
   
   no_sepsis_mean <- rbind(no_sepsis_mean, m_1[1])
   sepsis_mean <- rbind(sepsis_mean, m_2[1])
@@ -634,59 +829,164 @@ for (i in 2:13) {
 dtest_outliers_removed_d <- dtest_outliers_removed %>% select(variables, `no sepsis vs. sepsis, d`, 
                                                               `no sepsis vs. pre-sepsis, d`, `no sepsis vs. during sepsis, d`, 
                                                               `pre-sepsis vs. during sepsis, d`)
-kable(format(dtest_outliers_removed_d, digits = 3), format = "markdown")
+
+#Order the data in descending order based on the d value for no sepsis vs. pre-sepsis
+table <- dtest_outliers_removed_d %>%
+  mutate(`no sepsis vs. pre-sepsis, abs(d)` = abs(`no sepsis vs. pre-sepsis, d`)) %>%
+  arrange(desc(`no sepsis vs. pre-sepsis, abs(d)`)) %>%
+  select(-`no sepsis vs. pre-sepsis, abs(d)`)
+
+kable(format(table, digits = 3), format = "markdown")
 ```
   
+#### c) Outliers removed and NAs filled  
+```{r}
+#EFFECT SIZE ANALYSIS
+#Outliers removed and NA values filled
+variables <- names(cinc_data_3[3:21])
+
+no_sepsis_mean <- NULL
+sepsis_mean <- NULL
+pre_sepsis_mean <- NULL
+during_sepsis_mean <- NULL
+
+no_sepsis_sd <- NULL
+sepsis_sd <- NULL
+pre_sepsis_sd <- NULL
+during_sepsis_sd <- NULL
+
+d_no_sepsis_v_sepsis <- NULL
+d_no_sepsis_v_pre_sepsis <- NULL
+d_no_sepsis_v_during_sepsis <- NULL
+d_pre_sepsis_v_during_sepsis <- NULL
+
+for (i in 3:21) {
+  #calculate means and standard deviations for each population
+  msd_1 <- cinc_data_3 %>% #no-sepsis group
+    filter(LabelA == "no_sepsis")
+  n_1 <- msd_1 %>%
+    filter(!is.na(msd_1[, i])) %>%
+    summarise(n = n())
+  n_1 <- n_1[, 1] #sample size
+  msd_1 <- msd_1 %>%
+    summarise(mean = mean(msd_1[, i], na.rm = TRUE), sd = sd(msd_1[, i], na.rm = TRUE))
+  m_1 <- msd_1[,1] #mean
+  sd_1 <- msd_1[,2] #standard deviation
   
+  msd_2 <- cinc_data_3 %>% #sepsis group (all data)
+    filter(LabelA == "sepsis")
+  n_2 <- msd_2 %>%
+    filter(!is.na(msd_2[, i])) %>%
+    summarise(n = n())
+  n_2 <- n_2[, 1] #sample size
+  msd_2 <- msd_2 %>%
+    summarise(mean = mean(msd_2[, i], na.rm = TRUE), sd = sd(msd_2[, i], na.rm = TRUE))
+  m_2 <- msd_2[,1] #mean
+  sd_2 <- msd_2[,2] #standard deviation
+  
+  msd_3 <- cinc_data_3 %>% #pre-sepsis group
+    filter(LabelB == "pre-sepsis")
+  n_3 <- msd_3 %>%
+    filter(!is.na(msd_3[, i])) %>%
+    summarise(n = n())
+  n_3 <- n_3[, 1] #sample size
+  msd_3 <- msd_3 %>%
+    summarise(mean = mean(msd_3[, i], na.rm = TRUE), sd = sd(msd_3[, i], na.rm = TRUE))
+  m_3 <- msd_3[,1] #mean
+  sd_3 <- msd_3[,2] #standard deviation
+  
+  msd_4 <- cinc_data_3 %>% #during sepsis group
+    filter(LabelB == "during_sepsis")
+  n_4 <- msd_4 %>%
+    filter(!is.na(msd_4[, i])) %>%
+    summarise(n = n())
+  n_4 <- n_4[, 1] #sample size
+  msd_4 <- msd_4 %>%
+    summarise(mean = mean(msd_4[, i], na.rm = TRUE), sd = sd(msd_4[, i], na.rm = TRUE))
+  m_4 <- msd_4[,1] #mean
+  sd_4 <- msd_4[,2] #standard deviation
+  
+  #Calculate d-tests
+  #Calculate d-tests
+  d_12 <- (m_2 - m_1)/(sqrt(((n_2 - 1)*sd_2^2 + (n_1 - 1)*sd_1^2)/(n_2 + n_1 - 2))) #difference b/w no-sepsis and sepsis
+  d_13 <- (m_3 - m_1)/(sqrt(((n_3 - 1)*sd_3^2 + (n_1 - 1)*sd_1^2)/(n_3 + n_1 - 2))) #difference b/w no-sepsis and pre-sepsis
+  d_14 <- (m_4 - m_1)/(sqrt(((n_4 - 1)*sd_4^2 + (n_1 - 1)*sd_1^2)/(n_4 + n_1 - 2))) #difference b/w no-sepsis and during sepsis
+  d_34 <- (m_4 - m_3)/(sqrt(((n_4 - 1)*sd_4^2 + (n_3 - 1)*sd_3^2)/(n_4 + n_3 - 2))) #difference b/w pre-sepsis and during sepsis
+  
+  no_sepsis_mean <- rbind(no_sepsis_mean, m_1[1])
+  sepsis_mean <- rbind(sepsis_mean, m_2[1])
+  pre_sepsis_mean <- rbind(pre_sepsis_mean, m_3[1])
+  during_sepsis_mean <- rbind(during_sepsis_mean, m_4[1])
+  
+  no_sepsis_sd <- rbind(no_sepsis_sd, sd_1[1])
+  sepsis_sd <- rbind(sepsis_sd, sd_2[1])
+  pre_sepsis_sd <- rbind(pre_sepsis_sd, sd_3[1])
+  during_sepsis_sd <- rbind(during_sepsis_sd, sd_4[1])
+  
+  d_no_sepsis_v_sepsis <- rbind(d_no_sepsis_v_sepsis, d_12[1])
+  d_no_sepsis_v_pre_sepsis <- rbind(d_no_sepsis_v_pre_sepsis, d_13[1])
+  d_no_sepsis_v_during_sepsis <- rbind(d_no_sepsis_v_during_sepsis, d_14[1])
+  d_pre_sepsis_v_during_sepsis <- rbind(d_pre_sepsis_v_during_sepsis, d_34[1])
+}
+
+dtest_filled <- cbind(variables, no_sepsis_mean, no_sepsis_sd, sepsis_mean, sepsis_sd, pre_sepsis_mean, pre_sepsis_sd,
+                      during_sepsis_mean, during_sepsis_sd, d_no_sepsis_v_sepsis, d_no_sepsis_v_pre_sepsis,
+                      d_no_sepsis_v_during_sepsis, d_pre_sepsis_v_during_sepsis)
+
+dtest_filled <- as.data.frame(dtest_filled)
+
+colnames(dtest_filled) <- (c("variables", "no sepsis, mean", "no sepsis, sd", "sepsis, mean", "sepsis, sd", 
+                             "pre-sepsis, mean", "pre-sepsis, sd", "during sepsis, mean", "during sepsis, sd", 
+                             "no sepsis vs. sepsis, d", "no sepsis vs. pre-sepsis, d", 
+                             "no sepsis vs. during sepsis, d", "pre-sepsis vs. during sepsis, d"))
+
+for (i in 2:13) {
+  dtest_filled[,i] <- as.double(dtest_filled[,i])
+}
+
+#dtest_filled_means <- dtest_filled %>% select(variables, `no sepsis, mean`, `sepsis, mean`, `pre-sepsis, mean`, `during sepsis, mean`)
+#kable(format(dtest_filled_means, digits = 3), format = "markdown")
+
+#dtest_filled_sd <- dtest_filled %>% select(variables, `no sepsis, sd`, `sepsis, sd`, `pre-sepsis, sd`,`during sepsis, sd`)
+#kable(format(dtest_filled_sd, digits = 3), format = "markdown")
+
+dtest_filled_d <- dtest_filled %>% select(variables, `no sepsis vs. sepsis, d`, 
+                                          `no sepsis vs. pre-sepsis, d`, `no sepsis vs. during sepsis, d`, 
+                                          `pre-sepsis vs. during sepsis, d`)
+
+#Order the data in descending order based on the d value for no sepsis vs. pre-sepsis
+table <- dtest_filled_d %>%
+  mutate(`no sepsis vs. pre-sepsis, abs(d)` = abs(`no sepsis vs. pre-sepsis, d`)) %>%
+  arrange(desc(`no sepsis vs. pre-sepsis, abs(d)`)) %>%
+  select(-`no sepsis vs. pre-sepsis, abs(d)`)
+
+kable(format(table, digits = 3), format = "markdown")
+```
+  
+#### d) Discussion  
 In general, the variables with the greatest d values should be the strongest predictors of sepsis. In particular, the most valuable d values are likely the no sepsis vs. pre-sepsis values (i.e., which variables change the most leading up to sepsis?), followed by no sepsis vs. sepsis and no sepsis vs. during sepsis (i.e., which variables change the most due to sepsis?). Moreover, for a good predictor of sepsis, we would likely expect the d value for no sepsis vs. pre sepsis to be smaller than the no sepsis vs. during sepsis (i.e., effects should be more pronounced after diagnosis). If a variable has a small d value for no sepsis vs. during sepsis, but a large d value for no sepsis vs. pre-sepsis, it likely is not a good predictor and may not actually be associated with sepsis. Similarly, if the d value for no sepsis vs. pre-sepsis and no sepsis vs. during sepsis have different signs, it also is likely not a good predictor. 
   
-From these results, the strongest predictors of sepsis appear to be the following:  
- - HR  
- - SBP  
- - MAP  
- - Resp  
+From these results, the strongest and most consistent predictors of sepsis from all 3 datasets appear to be the following:  
  - BUN  
+ - HR  
+ - Resp  
  - Creatinine  
+ - Shock  
  - WBC  
   
+The following consistently appear to be poor predictors of sepsis:  
+ - Potassium (especially poor, as d-values have different signs for no sepsis vs. pre-sepsis and no sepsis vs. during sepsis)  
+ - Glucose (especially poor, as d-values have different signs for no sepsis vs. pre-sepsis and no sepsis vs. during sepsis)  
+ - Age  
+ - pH (especially poor, as d-values have different signs for no sepsis vs. pre-sepsis and no sepsis vs. during sepsis)  
+
+We may also want to be careful about the use of Magnesium levels, as the effect size is greater for the pre-sepsis group than the during sepsis group compared to the no sepsis group. While temperature is a poor predictor of pre-sepsis, it has a fairly large effect size when comparing no sepsis vs. during sepsis. As such, it may still be useful to include in the model.  
   
-The poorest predictors are (different signs for no sepsis vs. pre-sepsis and no sepsis vs. during sepsis - i.e., they may be misleasing):  
- - Temp  
- - FiO2  
+As with the p-values, it is likely that the results for the dataset in which outliers have been removed and NA values have been filled in is the most informative for the design of our CDSS. Based on these results, I might suggest testing the removal of all or some of the following variables from the CDSS model generation (in order of priority of removal):   
  - Potassium  
-  
-```{r, include = FALSE}
-#Code chunk for manually plotting one variable at a time
-#raw data
-p1 <- cinc_data_1 %>% ggplot(aes(x = LabelA, y = HR)) +
-  geom_boxplot(na.rm = TRUE) +
-  xlab("Sepsis status") +
-  ggtitle("Raw data") +
-  theme_minimal()
-p2 <- cinc_data_1 %>% ggplot(aes(x = LabelB, y = HR)) +
-  geom_boxplot(na.rm = TRUE) +
-  xlab("Sepsis status") +
-  ggtitle("Raw data") +
-  theme_minimal()
-
-#outliers removed
-p3 <- cinc_data_2 %>% ggplot(aes(x = LabelA, y = HR)) +
-  geom_boxplot(na.rm = TRUE) +
-  xlab("Sepsis status") +
-  ggtitle("Outliers removed") +
-  theme_minimal()
-p4 <- cinc_data_2 %>% ggplot(aes(x = LabelB, y = HR)) +
-  geom_boxplot(na.rm = TRUE) +
-  xlab("Sepsis status") +
-  ggtitle("Outliers removed") +
-  theme_minimal()
-
-grid.arrange(p1, p2, p3, p4, nrow = 2)
-grid.rect(width = 1, height = 1, gp = gpar(lwd = 2, col = "black", fill = NA))
-
-#uncomment to view larger versions of plots
-#print(p1)
-#print(p2)
-#print(p3)
-#print(p4)
-```
+ - Glucose  
+ - pH  
+ - Age  
+ - Temp  
+ - Magnesium  
+ 
